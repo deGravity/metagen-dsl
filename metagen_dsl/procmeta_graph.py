@@ -135,12 +135,13 @@ class ProcMetaGraph:
         self.sr.add_node(vox)
         self.sr.add_edge(inputObj, vox)
 
-    def save_to_json(self, filename:Path) -> None:
+    def to_json(self) -> str:
         topo_nodes = list(nx.topological_sort(self.sr))
         j = { "operations": [] }
         for node in topo_nodes:
             j["operations"].append(node.get_proc_meta_description())
-        
-        fh = open(filename, 'w')
-        json.dump(j, fh, indent=4)
-        fh.close()        
+        return json.dumps(j, indent=4)
+
+    def save_to_json(self, filename:Path) -> None:
+        with open(filename, 'w') as fh:
+            fh.write(self.to_json())

@@ -1,117 +1,181 @@
+import base64
+from collections import OrderedDict
 from enum import Enum
+
 from .tile import Tile
 from .pattern import TilingPattern
+from . import _options
+from . import _backend
 
 
 # =======================================
 #   Structures
 # =======================================
 class Structure:
-    # TODO: if custom operations like rotation are used,
-    # we should probably check that there is eg something about the skeleton incident on the rotation line, otherwise it might be invalid
-    # if the structure is disconnected under those operations
+    """A metamaterial unit cell: a Tile plus a TilingPattern.
 
-    def __init__(self, tile:Tile, pattern:TilingPattern):
-        # assign to the original parameter names (correcting mismatched signatures in code/documentation)
-        _tile = tile
-        _pattern = pattern
+    Methods that do expensive work (geometry generation, simulation,
+    rendering) are cached per-instance in a bounded LRU.
+    """
 
-        self.tile = _tile
-        self.pat = _pattern
+    def __init__(self, tile: Tile, pattern: TilingPattern):
+        self.tile = tile
+        self.pat = pattern
+        self._cache = OrderedDict()
 
-    def __call__(self, color=None, box_color=None, simulate=False, resolution=64):
-        from tempfile import TemporaryDirectory, TemporaryFile
-        import os
-        import trimesh
-        import base64
-        from metagen import ProcMetaTranslator # local to avoid circular reference
-        from metagen.processing import generate_and_simulate, run_render, load_voxels, validate_voxels
-        from metagen.validation import validate_simulation
-        output = {'valid':False}
-        with TemporaryDirectory(delete=False) as tempdir:
-            graph_path = os.path.join(tempdir, 'graph.json')
-            ProcMetaTranslator(self).save(graph_path)
-            log_info = generate_and_simulate(graph_path, resolution, tempdir, simulate=simulate)
-            output['log_info'] = log_info
-            mesh_path = os.path.join(tempdir, 'thickened_mc.obj')
-            vox_path = os.path.join(tempdir, 'vox_active_cells.txt')
-            sim_path = os.path.join(tempdir, 'structure_info.json')
-            if os.path.exists(vox_path):
-                with open(vox_path, 'r') as f:
-                    voxels = load_voxels(f)
-                valid = validate_voxels(voxels)
-                output['valid'] = valid
-                output['voxels'] = voxels
-            if os.path.exists(mesh_path):
-                run_render(mesh_path, tempdir, color, box_color)
-                def read_im(p):
-                    with open(p,'rb') as f:
-                        return base64.b64encode(f.read()).decode()
-                mesh = trimesh.load_mesh(mesh_path)
-                output['mesh'] = mesh
-                images = {n: read_im(os.path.join(tempdir,f'{n}.png')) for n in ['top_right','top','front','right','all']}
-                output['images'] = images
-            if os.path.exists(sim_path):
-                import json
-                with open(sim_path, 'r') as f:
-                    sim_data = json.load(f)
-                output['sim_data'] = sim_data
-                output['sim_valid'] = validate_simulation(sim_path)
-        return output
-    
-    def _repr_llm_(self):
-        output = self()
-        content = []
-        
-        if 'images' in output:
-            if not output['valid']:
-                content.append({'type':'text', 'value':'Invalid Metamaterial'})
-            for (label, key) in [('Front-Upper-Right', 'top_right'), ('Top', 'top'), ('Front', 'front'), ('Right', 'right')]:
-                img_data = output['images'][key]
-                img_enc = f"data:image/png;base64, {img_data}"
-                content.append({'type':'text', 'value':f'{label} View:'})
-                content.append({'type':'image', 'value':img_enc})
-        else:
-            content.append({'type':'text', 'value':'Program failed to produce a material.'})
+    # -----------------------------------------------------------------
+    # cache helpers
+    # -----------------------------------------------------------------
+    def _cache_get(self, key):
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        return None
 
-        return {
-            'role': 'dsl',
-            'content': content
-        }
+    def _cache_put(self, key, value):
+        self._cache[key] = value
+        self._cache.move_to_end(key)
+        while len(self._cache) > _options.get_option('cache.max_entries'):
+            self._cache.popitem(last=False)
 
+    def clear_cache(self):
+        self._cache.clear()
 
-    def _repr_html_(self):
-        output = self()
-        tags = []
-        if 'mesh' in output:
-            import trimesh.viewer
-            return trimesh.viewer.scene_to_notebook(trimesh.Scene(output['mesh']))._repr_html_()
-        if 'images' in output:
-            table = '''
-            <table>
-            <tr>
-                <td><img src="data:image/png;base64, {top_data}" /></td>
-                <td><img src="data:image/png;base64, {top_right_data}" /></td>
-            </tr>
-            <tr>
-                <td><img src="data:image/png;base64, {front_data}" /></td>
-                <td><img src="data:image/png;base64, {right_data}" /></td>
-            </tr>
-            </table>
-            '''.format(top_data = output['images']['top'],
-                top_right_data = output['images']['top_right'],
-                front_data = output['images']['front'],
-                right_data = output['images']['right'])
-            tags.append(table)
-            #for viewpoint, data in output['images'].items():
-                #data = output['images']['top_right']
-                #tags.append(f'<p><b>{viewpoint}</b><img src="data:image/png;base64, {data}" /></p>')
-            tags.append(f'<p> {"Valid" if output["valid"] else "Invalid"} </p>')
-        else:
-            tags.append('<p>Failed to produce output.</p>')
-        return '\n'.join(tags)
-        
+    # -----------------------------------------------------------------
+    # graph serialization (cached once — cheap but unnecessary to redo)
+    # -----------------------------------------------------------------
+    def graph_json(self) -> str:
+        """Return the procedural graph JSON string for this Structure."""
+        cached = self._cache_get(('graph_json',))
+        if cached is not None:
+            return cached
+        from .procmeta_translator import ProcMetaTranslator
+        s = ProcMetaTranslator(self).to_json()
+        self._cache_put(('graph_json',), s)
+        return s
 
+    # -----------------------------------------------------------------
+    # geometry / simulation
+    # -----------------------------------------------------------------
+    def geometry(self, resolution: int = None):
+        """Generate geometry via metagen_kernel. Cached by resolution."""
+        if resolution is None:
+            resolution = _options.get_option('display.resolution_direct')
+        key = ('geometry', resolution)
+        cached = self._cache_get(key)
+        if cached is not None:
+            return cached
+        geo = _backend.generate_voxels(self.graph_json(), resolution)
+        self._cache_put(key, geo)
+        return geo
+
+    def simulate(self, resolution: int = None, backend: str = None,
+                 E: float = 1.0, nu: float = 0.45):
+        """Run homogenization. Cached by (resolution, backend, E, nu)."""
+        if resolution is None:
+            resolution = _options.get_option('display.resolution_direct')
+        if backend is None:
+            backend = _options.get_option('display.backend')
+        key = ('simulate', resolution, backend, E, nu)
+        cached = self._cache_get(key)
+        if cached is not None:
+            return cached
+        geo = self.geometry(resolution)
+        sim = _backend.simulate(geo, backend=backend, E=E, nu=nu)
+        self._cache_put(key, sim)
+        return sim
+
+    # -----------------------------------------------------------------
+    # visualization
+    # -----------------------------------------------------------------
+    def render(self, resolution: int = None, views=None, size=None) -> dict:
+        """Render static views via matplotlib. Returns {view: png_bytes}."""
+        if resolution is None:
+            resolution = _options.get_option('display.resolution_direct')
+        if views is None:
+            views = _options.get_option('display.render_views')
+        if size is None:
+            size = _options.get_option('display.render_size')
+        key = ('render', resolution, tuple(views), tuple(size))
+        cached = self._cache_get(key)
+        if cached is not None:
+            return cached
+        from . import _viz
+        geo = self.geometry(resolution)
+        imgs = _viz.render_static(geo, views=views, size=size)
+        self._cache_put(key, imgs)
+        return imgs
+
+    def interactive(self, resolution: int = None):
+        """Return a k3d.Plot for notebook display."""
+        if resolution is None:
+            resolution = _options.get_option('display.resolution_direct')
+        from . import _viz
+        return _viz.render_interactive(self.geometry(resolution))
+
+    def summary(self, resolution: int = None, backend: str = None) -> str:
+        """HTML table of the simulation results."""
+        from . import _viz
+        return _viz.sim_summary_html(self.simulate(resolution, backend))
+
+    # -----------------------------------------------------------------
+    # repr
+    # -----------------------------------------------------------------
+    def __repr__(self):
+        tile = type(self.tile).__name__ if hasattr(self, 'tile') else '?'
+        pat = type(self.pat).__name__ if hasattr(self, 'pat') else '?'
+        return f"<{type(self).__name__} tile={tile} pat={pat}>"
+
+    def _repr_mimebundle_(self, include=None, exclude=None):
+        """Rich repr for Jupyter. CLI `repr()` uses __repr__ and never calls this."""
+        show = _options.get_option('display.show')
+        resolution = _options.get_option('display.resolution')
+        simulate_in_repr = _options.get_option('display.simulate_in_repr')
+
+        if show == 'auto':
+            show = 'render'
+        if simulate_in_repr == 'auto':
+            simulate_in_repr = _backend.gpu_available()
+
+        if show == 'none':
+            return {'text/plain': repr(self)}
+
+        if not _backend.has_kernel():
+            return {
+                'text/plain': repr(self),
+                'text/html': (f'<p><code>{self!r}</code></p>'
+                              f'<p><em>install <code>metagen-dsl[native]</code> '
+                              f'for geometry and simulation.</em></p>'),
+            }
+
+        try:
+            parts = [f'<p><code>{self!r}</code></p>']
+
+            if show in ('render', 'all'):
+                imgs = self.render(resolution=resolution)
+                tbl_cells = ''.join(
+                    f'<td><img src="data:image/png;base64,'
+                    f'{base64.b64encode(b).decode()}"/></td>'
+                    for b in imgs.values()
+                )
+                parts.append(f'<table><tr>{tbl_cells}</tr></table>')
+
+            if show in ('sim', 'all') or (show == 'render' and simulate_in_repr):
+                if _backend.has_simulator():
+                    sim = self.simulate(resolution=resolution)
+                    from . import _viz
+                    parts.append(_viz.sim_summary_html(sim))
+
+            return {
+                'text/plain': repr(self),
+                'text/html': '\n'.join(parts),
+            }
+        except Exception as e:
+            return {
+                'text/plain': repr(self),
+                'text/html': (f'<p><code>{self!r}</code></p>'
+                              f'<p><em>repr failed: {type(e).__name__}: {e}</em></p>'),
+            }
 
 
 # =======================================
@@ -122,20 +186,25 @@ class CSGBooleanTypes(Enum):
     INTERSECT = 1
     DIFFERENCE = 2
 
+
 class CSGBoolean(Structure):
-    def __init__(self, _A:Structure, _B:Structure, _opType:CSGBooleanTypes):
+    def __init__(self, _A: Structure, _B: Structure, _opType: CSGBooleanTypes):
         self.A = _A
         self.B = _B
         self.op_type = _opType
+        self._cache = OrderedDict()
+
 
 class Union(CSGBoolean):
-    def __init__(self, A:Structure, B:Structure):
+    def __init__(self, A: Structure, B: Structure):
         super().__init__(A, B, CSGBooleanTypes.UNION)
 
+
 class Intersect(CSGBoolean):
-    def __init__(self, A:Structure, B:Structure):
+    def __init__(self, A: Structure, B: Structure):
         super().__init__(A, B, CSGBooleanTypes.INTERSECT)
 
+
 class Subtract(CSGBoolean):
-    def __init__(self, A:Structure, B:Structure):
+    def __init__(self, A: Structure, B: Structure):
         super().__init__(A, B, CSGBooleanTypes.DIFFERENCE)

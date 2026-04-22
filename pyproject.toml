@@ -13,5 +13,15 @@ dependencies = [
     "scipy",
 ]
 
+[project.optional-dependencies]
+# Native geometry + simulation backends
+native = ["metagen-kernel", "metagen-simulator"]
+# Notebook visualization
+viz = ["k3d", "matplotlib"]
+# Legacy offline/headless rendering (OSMesa required separately)
+pyrender = ["pyrender"]
+# Everything a notebook user would want
+all = ["metagen-dsl[native,viz]"]
+
 [tool.setuptools.packages.find]
 include = ["metagen_dsl*"]

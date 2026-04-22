@@ -15,3 +15,6 @@ from .convex_polytope import *
 tet = cp.CPT_Tet("tet")
 cuboid = cp.CPT_Cuboid("cuboid")
 triPrism = cp.CPT_TriangularPrism("triPrism")
+
+# Display / cache options (pandas-style)
+from ._options import set_option, get_option, reset_option, option_context

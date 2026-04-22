@@ -240,5 +240,8 @@ class ProcMetaTranslator:
         vox1 = self.sr.add_voxel(booleanOpOut)
 
 
+    def to_json(self) -> str:
+        return self.sr.to_json()
+
     def save(self, filename:Path):
         self.sr.save_to_json(filename)
