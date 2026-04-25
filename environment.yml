@@ -1,0 +1,42 @@
+# Development environment for metagen-dsl.
+#
+# metagen-dsl is pure Python — no C++ compilation. This env is just the
+# Python runtime plus pure-Python runtime deps plus test/viz tooling.
+# To run tests that exercise the kernel or simulator (e.g., test_integration),
+# install those two packages into the env separately:
+#
+#   pip install -e /path/to/metagen-kernel -e /path/to/metagen-simulator
+#
+# Or install metagen-dsl with its [native] extra once the sibling packages
+# are published to PyPI.
+#
+# Usage:
+#   conda env create -f environment.yml
+#   conda activate metagen-dsl
+#   pip install -e .                    # install the dsl package itself
+#   pytest tests/                       # basic suites (graph, options, cache, render)
+#   pytest tests/test_integration.py   # needs kernel + simulator installed too
+
+name: metagen-dsl
+channels:
+  - conda-forge
+dependencies:
+  # Python runtime
+  - python=3.12
+  - pip
+
+  # Runtime deps (required)
+  - numpy
+  - networkx
+  - scipy
+
+  # Optional: matplotlib for the default render path. Kept in the env rather
+  # than gated to [viz] extra since dev workflows typically want renders.
+  - matplotlib
+
+  # Test tooling
+  - pytest
+
+  # k3d is pip-only (not on conda-forge reliably); only needed for
+  # s.interactive() widgets in Jupyter. Omitted here — install with
+  # `pip install k3d ipywidgets` if you need interactive rendering.
