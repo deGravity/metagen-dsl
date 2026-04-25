@@ -1,0 +1,3 @@
+[submodule "tests/fixtures"]
+	path = tests/fixtures
+	url = git@github.com:deGravity/metagen-tests.git
