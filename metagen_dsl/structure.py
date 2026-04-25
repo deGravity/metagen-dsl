@@ -12,10 +12,24 @@ from . import _backend
 #   Structures
 # =======================================
 class Structure:
-    """A metamaterial unit cell: a Tile plus a TilingPattern.
+    """Combine local tile information with a global patterning procedure.
+
+    Combines local tile information (containing lifted skeletons) with the
+    global patterning procedure to generate a complete metamaterial.
 
     Methods that do expensive work (geometry generation, simulation,
     rendering) are cached per-instance in a bounded LRU.
+
+    @params:
+        tile - the tile object, which has (by construction) already been
+               embedded in 3D space, along with all lifted skeletons it
+               contains.
+        pattern - the patterning sequence to apply to extend this tile
+                  throughout space.
+    @returns:
+        structure - the new structure object.
+    @example_usage:
+        obj = Structure(tile, pat)
     """
 
     def __init__(self, tile: Tile, pattern: TilingPattern):
@@ -196,15 +210,63 @@ class CSGBoolean(Structure):
 
 
 class Union(CSGBoolean):
+    """CSG Boolean union of two structures.
+
+    Constructive solid geometry Boolean operation that computes the union of
+    two input structures. The output of Union(A, B) is identical to
+    Union(B, A).
+
+    @params:
+        A - the first Structure to be unioned. May be the output of
+            Structure, Union, Subtract, or Intersect.
+        B - the second Structure to be unioned. May be the output of
+            Structure, Union, Subtract, or Intersect.
+    @returns:
+        structure - the new structure object containing union(A, B).
+    @example_usage:
+        final_obj = Union(schwarzP_obj, Union(sphere_obj, beam_obj))
+    """
     def __init__(self, A: Structure, B: Structure):
         super().__init__(A, B, CSGBooleanTypes.UNION)
 
 
 class Intersect(CSGBoolean):
+    """CSG Boolean intersection of two structures.
+
+    Constructive solid geometry Boolean operation that computes the
+    intersection of two input structures, A and B.
+
+    @params:
+        A - the first Structure, which may be the output of Structure,
+            Union, Subtract, or Intersect.
+        B - the second Structure, which may be the output of Structure,
+            Union, Subtract, or Intersect.
+    @returns:
+        structure - the new structure object containing the intersection of
+                    A and B.
+    @example_usage:
+        final_obj = Intersect(c_obj, s_obj)
+    """
     def __init__(self, A: Structure, B: Structure):
         super().__init__(A, B, CSGBooleanTypes.INTERSECT)
 
 
 class Subtract(CSGBoolean):
+    """CSG Boolean difference (A - B) of two structures.
+
+    Constructive solid geometry Boolean operation that computes the
+    difference (A - B) of two input structures. The relative input order is
+    critical.
+
+    @params:
+        A - the first Structure, from which B will be subtracted. May be the
+            output of Structure, Union, Subtract, or Intersect.
+        B - the second Structure, to be subtracted from A. May be the output
+            of Structure, Union, Subtract, or Intersect.
+    @returns:
+        structure - the new structure object containing (A - B).
+    @example_usage:
+        final_obj = Subtract(c_obj, s_obj)
+    """
     def __init__(self, A: Structure, B: Structure):
         super().__init__(A, B, CSGBooleanTypes.DIFFERENCE)

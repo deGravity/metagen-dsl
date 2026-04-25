@@ -1034,6 +1034,34 @@ class ConvexPolytope:
 #  External calls
 # ============================================== 
 def vertex(cpEntity:ConvexPolytope.AliasedCPEntityInfo, t:list[float]=[]) -> ConvexPolytope.RelativeVert:
+    """Create a new vertex relative to a convex polytope (CP) entity.
+
+    The vertex is defined relative to its containing convex polytope.
+    It will only have an embedding in R3 once the CP has been embedded.
+
+    @params:
+        cpEntity - an entity of a convex polytope (CP), referenced by the entity names.
+        t - [OPTIONAL] list of floats in range [0,1], used to interpolate to a specific
+            position on the cpEntity.
+              If cpEntity is a corner, t is ignored.
+              If cpEntity is an edge, t must contain exactly 1 value. t is used for
+                linear interpolation between the endpoints of cpEntity.
+              If cpEntity is a face, t must contain exactly 2 values. If cpEntity is a
+                triangular face, t is used to interpolate via barycentric coordinates.
+                If cpEntity is a quad face, bilinear interpolation is used.
+              If the optional interpolant t is omitted for a non-corner entity, the
+              returned point will be at the midpoint (for edge) or the centroid (for
+              face) of the entity. Semantically, we encourage that t be excluded
+              (1) if the structure would be invalid given a different non-midpoint t,
+              or (2) if the structure would remain unchanged in the presence a
+              different t (e.g., in the case of a conjugate TPMS, where only the entity
+              selection matters).
+    @returns:
+        vertex - the new vertex object.
+    @example_usage:
+        v0 = vertex(cuboid.edges.BACK_RIGHT, [0.5])
+        v1 = vertex(cuboid.edges.TOP_LEFT)
+    """
     # assign to the original parameter names (correcting mismatched signatures in code/documentation)
     entityInfo = cpEntity
     weights = t
@@ -1074,6 +1102,22 @@ class CPT_Tet(ConvexPolytope):
         return tile_corners
 
     def embed(self, bounding_box_side_length:float):
+        """Embed the tet CP in R^3.
+
+        Constructs the information required to embed the tet CP in R^3.
+
+        @params:
+            bounding_box_side_length - length of axis-aligned bounding box
+                                       containing the tet. Float in range
+                                       [0, 1]. Must be 1/2^k for some
+                                       integer k.
+        @returns:
+            embedding - the embedding information. Specifically, the
+                        position in R^3 of all the CP corners.
+        @example_usage:
+            side_len = 0.5 / num_tiling_unit_repeats_per_dim
+            embedding = tet.embed(side_len)
+        """
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         bounding_box_side_len = bounding_box_side_length
 
@@ -1121,6 +1165,23 @@ class CPT_TriangularPrism(ConvexPolytope):
         return tile_corners
 
     def embed(self, bounding_box_side_length:float):
+        """Embed the triangular prism CP in R^3.
+
+        Constructs the information required to embed the triangular prism
+        CP in R^3.
+
+        @params:
+            bounding_box_side_length - length of axis-aligned bounding box
+                                       containing the triangular prism. Float
+                                       in range [0, 1]. Must be 1/2^k for
+                                       some integer k.
+        @returns:
+            embedding - the embedding information. Specifically, the
+                        position in R^3 of all the CP corners.
+        @example_usage:
+            side_len = 0.5 / num_tiling_unit_repeats_per_dim
+            embedding = triPrism.embed(side_len)
+        """
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         bounding_box_side_len = bounding_box_side_length
 
@@ -1174,9 +1235,32 @@ class CPT_Cuboid(ConvexPolytope):
         return tile_corners
 
     def embed_via_minmax(self, aabb_min_pt:list[float], aabb_max_pt:list[float], cornerAtMinPt:ConvexPolytope.AliasedCPEntityInfo=None, **kwargs):
+        """Embed the cuboid CP in R^3 by min/max corner.
+
+        Constructs the information required to embed the cuboid CP in R^3
+        from explicit min/max corner positions (alternative to embed()).
+
+        @params:
+            aabb_min_pt - minimum point of the cuboid, in R^3. Given as a
+                          list of length 3, where each component must be a
+                          float in range [0, 1], with 1/2^k for some integer k.
+            aabb_max_pt - maximum point of the cuboid, in R^3. Given as a
+                          list of length 3, where each component must be a
+                          float in range [0, 1], with 1/2^k for some integer k.
+            cornerAtMinPt - CP corner entity (e.g.,
+                            cuboid.corners.FRONT_BOTTOM_LEFT) that should
+                            be collocated with the cuboid's minimum
+                            position in R^3.
+        @returns:
+            embedding - the embedding information. Specifically, the
+                        position in R^3 of all the CP corners.
+        @example_usage:
+            side_len = 0.5 / num_tiling_unit_repeats_per_dim
+            embedding = cuboid.embed_via_minmax([0,0,0], [side_len, side_len, side_len], cuboid.corners.BACK_BOTTOM_RIGHT)
+        """
         # check kwargs for cornerAtAABBMin, which is the argument name for a very similar function (cuboid.embed)
         # they're semantically similar and role is the same, so just accept this if passed
-        # but ignore this value if the actual named parameter is provided 
+        # but ignore this value if the actual named parameter is provided
         if not cornerAtMinPt and "cornerAtAABBMin" in kwargs:
             assert isinstance(kwargs["cornerAtAABBMin"], ConvexPolytope.AliasedCPEntityInfo)
             cornerAtMinPt = kwargs.get("cornerAtAABBMin")
@@ -1230,6 +1314,28 @@ class CPT_Cuboid(ConvexPolytope):
         return self.embed_using_values_of_componentwise_aliases(comps["FRONT"]["val"], comps["BACK"]["val"], comps["BOTTOM"]["val"], comps["TOP"]["val"], comps["LEFT"]["val"], comps["RIGHT"]["val"])
 
     def embed(self, width:float, height:float, depth:float, cornerAtAABBMin:ConvexPolytope.AliasedCPEntityInfo=None, **kwargs):
+        """Embed the cuboid CP in R^3.
+
+        Constructs the information required to embed the cuboid CP in R^3.
+
+        @params:
+            width - length of cuboid side from left to right. Float in range
+                    [0, 1]. Must be 1/2^k for some integer k.
+            height - length of cuboid side from top to bottom. Float in range
+                     [0, 1]. Must be 1/2^k for some integer k.
+            depth - length of cuboid side from front to back. Float in range
+                    [0, 1]. Must be 1/2^k for some integer k.
+            cornerAtAABBMin - CP corner entity (e.g.,
+                              cuboid.corners.FRONT_BOTTOM_LEFT) that should
+                              be collocated with the cuboid's minimum
+                              position in R^3.
+        @returns:
+            embedding - the embedding information. Specifically, the
+                        position in R^3 of all the CP corners.
+        @example_usage:
+            side_len = 0.5 / num_tiling_unit_repeats_per_dim
+            embedding = cuboid.embed(side_len, side_len, side_len, cornerAtAABBMin=cuboid.corners.FRONT_BOTTOM_LEFT)
+        """
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         width_LtoR = width
         height_TtoB = height

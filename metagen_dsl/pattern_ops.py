@@ -66,6 +66,30 @@ class NoOp(PatternOp):
 
 
 class Translate(PatternOp):
+    """Translation pattern op (use inside Custom).
+
+    Pattern operation specifying a translation that effectively moves the
+    fromEntity to the toEntity. Can only be used inside of a Custom
+    patterning environment.
+
+    @params:
+        fromEntity - CP Entity that serves as the origin of the translation
+                     vector. Currently only implemented for a CP Face.
+        toEntity - CP Entity that serves as the target of the translation
+                   vector. Currently only implemented for a CP Face.
+        doCopy - boolean. When True, applies the operation to a copy of the
+                 input, such that the original and the transformed copy
+                 persist. When False, directly transforms the input.
+        patternOp - [OPTIONAL] outermost pattern operation in the
+                    sub-composition, if any.
+    @returns:
+        pat - the composed patterning procedure, which may be used as is
+              (within the Custom environment), or as the input for further
+              composition.
+    @example_usage:
+        gridPat = Custom(Translate(cuboid.faces.LEFT, cuboid.faces.RIGHT, True,
+                            Translate(cuboid.faces.FRONT, cuboid.faces.BACK, True)))
+    """
     def __init__(self, fromEntity:cp.ConvexPolytope.AliasedCPEntityInfo, toEntity:cp.ConvexPolytope.AliasedCPEntityInfo, doCopy:bool, patternOp:Self=None):
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         _fromEntity = fromEntity
@@ -138,6 +162,27 @@ class Translate(PatternOp):
 
 
 class Mirror(PatternOp):
+    """Mirror pattern op (use inside Custom).
+
+    Pattern operation specifying a mirror over the provided CP entity, which
+    must be a CP Face. Can only be used inside of a Custom patterning
+    environment.
+
+    @params:
+        entity - CP Face that serves as the mirror plane.
+        doCopy - boolean. When True, applies the operation to a copy of the
+                 input, such that the original and the transformed copy
+                 persist. When False, directly transforms the input.
+        patternOp - [OPTIONAL] outermost pattern operation in the
+                    sub-composition, if any.
+    @returns:
+        pat - the composed patterning procedure, which may be used as is
+              (within the Custom environment), or as the input for further
+              composition.
+    @example_usage:
+        pat = Custom(Mirror(cuboid.faces.TOP, True,
+                       Mirror(cuboid.faces.LEFT, True)))
+    """
     def __init__(self, entity:cp.ConvexPolytope.AliasedCPEntityInfo, doCopy:bool, patternOp:Self=None):
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         _opEntity = entity
@@ -320,6 +365,30 @@ class Rotate90(Rotate):
         super().__init__(_opEntities, 90, _doCopy, _operand)
 
 class Rotate180(Rotate):
+    """180° rotation pattern op (use inside Custom).
+
+    Pattern operation specifying a 180-degree rotation about the provided CP
+    entity. Can only be used inside of a Custom patterning environment.
+
+    @params:
+        entities - List of CP entities, which define the axis about which to
+                   rotate. If a single entity is provided, it must be a CP
+                   Edge. If multiple entities, they will be used to define a
+                   new entity that spans them (e.g., two corners → axis from
+                   one to the other; two edges → axis from midpoint to
+                   midpoint).
+        doCopy - boolean. When True, applies the operation to a copy of the
+                 input, such that the original and the transformed copy
+                 persist. When False, directly transforms the input.
+        patternOp - [OPTIONAL] outermost pattern operation in the
+                    sub-composition, if any.
+    @returns:
+        pat - the composed patterning procedure, which may be used as is
+              (within the Custom environment), or as the input for further
+              composition.
+    @example_usage:
+        pat = Custom(Rotate180([cuboid.edges.FRONT_LEFT, cuboid.edges.FRONT_RIGHT], True))
+    """
     def __init__(self, entities:list[cp.ConvexPolytope.AliasedCPEntityInfo], doCopy:bool, patternOp:Self=None):
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         _opEntities = entities

@@ -26,6 +26,23 @@ class LiftedSkeleton:
 #  Beams
 # =============================
 class UniformBeams(LiftedSkeleton):
+    """Lift a skeleton to a 3D structure of uniform-thickness beams.
+
+    Procedure to lift the input skeleton to a 3D volumetric structure by
+    instantiating a beam of the given thickness centered along each
+    polyline/curve of the input skeleton.
+
+    @requirements:
+        The skeleton must contain only polylines and/or curves. The skeleton
+        must not contain any standalone vertices.
+    @params:
+        skel - the skeleton to lift.
+        thickness - the diameter of the beams.
+    @returns:
+        liftProc - the lifted skeleton.
+    @example_usage:
+        liftProcedure = UniformBeams(skel, 0.03)
+    """
     def __init__(self, skel:Skeleton, thickness:float, thickenProc:ThickeningProcedure=ThickeningProcedure.SPHERICAL) -> None:
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         _skel = skel
@@ -37,6 +54,30 @@ class UniformBeams(LiftedSkeleton):
         return super().__call__(*args, **kwds)
     
 class SpatiallyVaryingBeams(LiftedSkeleton):
+    """Lift a skeleton to beams with a spatially-varying thickness profile.
+
+    Procedure to lift the input skeleton to a 3D volumetric structure by
+    instantiating a beam of the given spatially-varying thickness profile
+    centered along each polyline/curve of the input skeleton.
+
+    @requirements:
+        The skeleton must contain only polylines and/or curves. The skeleton
+        must not contain any standalone vertices.
+    @params:
+        skel - the skeleton to lift.
+        thicknessProfile - specifications for the diameter of the beams along
+                           each polyline/curve. Given as a list[list[float]],
+                           where each of the n inner lists gives the
+                           information for a single sample point along the
+                           polyline/curve. The first element in each inner
+                           list provides a position parameter t in [0,1] along
+                           the polyline/curve, and the second element specifies
+                           the thickness of the beam at position t.
+    @returns:
+        liftProc - the lifted skeleton.
+    @example_usage:
+        liftProcedure = SpatiallyVaryingBeams(skel, [[0.0, 0.02], [1.0, 0.06]])
+    """
     def __init__(self, skel:Skeleton, thicknessProfile:list[list[float]], thickenProc:ThickeningProcedure=ThickeningProcedure.SPHERICAL) -> None:
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         _skel = skel
@@ -64,6 +105,30 @@ class UniformShell(LiftedSkeleton):
         return super().__call__(*args, **kwds)
 
 class UniformTPMSShellViaConjugation(UniformShell):
+    """Lift a skeleton to a TPMS shell via the conjugate-surface construction.
+
+    Procedure to lift the input skeleton to a 3D volumetric structure by
+    inferring a triply periodic minimal surface (TPMS) that conforms to the
+    boundary constraints provided by the input skeleton. The surface is
+    computed via the conjugate surface construction method.
+
+    @requirements:
+        The skeleton must contain a single closed loop composed of one or
+        more polylines and/or curves. The skeleton must not contain any
+        standalone vertices.
+        Each vertex in the polylines/curves must live on a CP edge.
+        Adjacent vertices must have a shared face.
+        The loop must touch every face of the CP at least once.
+        If the CP has N faces, the loop must contain at least N vertices.
+    @params:
+        skel - the skeleton to lift.
+        thickness - the thickness of the shell. The final offset is
+                    thickness/2 to each side of the inferred surface.
+    @returns:
+        liftProc - the lifted skeleton.
+    @example_usage:
+        liftProcedure = UniformTPMSShellViaConjugation(skel, 0.03)
+    """
     def __init__(self, skel:Skeleton, thickness:float, thickenProc:ThickeningProcedure=ThickeningProcedure.SPHERICAL) -> None:
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         _skel = skel
@@ -80,6 +145,29 @@ class UniformTPMSShellViaConjugation(UniformShell):
         return super().__call__(*args, **kwds)
     
 class UniformDirectShell(UniformShell):
+    """Lift a skeleton to a thin shell with a directly-fitted surface.
+
+    Procedure to lift the input skeleton to a 3D volumetric structure by
+    inferring a surface that conforms to the boundary provided by the input
+    skeleton. The surface is given by a simple thin shell model: the
+    resulting surface is incident on the provided boundary while minimizing
+    a weighted sum of bending and stretching energies. The boundary is fixed,
+    though it may be constructed with a mix of polylines and curves (which
+    are first interpolated into a spline, then fixed as part of the boundary).
+
+    @requirements:
+        The skeleton must contain a single closed loop composed of one or
+        more polylines and/or curves. The skeleton must not contain any
+        standalone vertices.
+    @params:
+        skel - the skeleton to lift.
+        thickness - the thickness of the shell. The final offset is
+                    thickness/2 to each side of the inferred surface.
+    @returns:
+        liftProc - the lifted skeleton.
+    @example_usage:
+        liftProcedure = UniformDirectShell(skel, 0.1)
+    """
     def __init__(self, skel:Skeleton, thickness:float, thickenProc:ThickeningProcedure=ThickeningProcedure.SPHERICAL) -> None:
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         _skel = skel
@@ -90,6 +178,30 @@ class UniformDirectShell(UniformShell):
         return super().__call__(*args, **kwds)
 
 class UniformTPMSShellViaMixedMinimal(UniformShell):
+    """Lift a skeleton to a TPMS shell via mean curvature flow.
+
+    Procedure to lift the input skeleton to a 3D volumetric structure by
+    inferring a triply periodic minimal surface (TPMS) that conforms to the
+    boundary constraints provided by the input skeleton. The surface is
+    computed via mean curvature flow. All polyline boundary regions are
+    considered fixed, but any curved regions may slide within their
+    respective planes in order to reduce surface curvature during the solve.
+
+    @requirements:
+        The skeleton must contain a single closed loop composed of one or
+        more polylines and/or curves. The skeleton must not contain any
+        standalone vertices.
+        Each vertex in the polylines/curves must live on a CP edge.
+        Adjacent vertices must have a shared face.
+    @params:
+        skel - the skeleton to lift.
+        thickness - the thickness of the shell. The final offset is
+                    thickness/2 to each side of the inferred surface.
+    @returns:
+        liftProc - the lifted skeleton.
+    @example_usage:
+        liftProcedure = UniformTPMSShellViaMixedMinimal(skel, 0.03)
+    """
     def __init__(self, skel:Skeleton, thickness:float, thickenProc:ThickeningProcedure=ThickeningProcedure.SPHERICAL) -> None:
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         _skel = skel
@@ -105,6 +217,23 @@ class UniformTPMSShellViaMixedMinimal(UniformShell):
 #  Volumes
 # =============================
 class Spheres(LiftedSkeleton):
+    """Lift a point skeleton by placing a sphere at each vertex.
+
+    Procedure to lift the input skeleton to a 3D volumetric structure by
+    instantiating a sphere of the given radius centered at vertex p, for
+    each vertex in the skeleton.
+
+    @requirements:
+        The skeleton must only contain standalone vertices; no polylines or
+        curves can be used.
+    @params:
+        skel - the skeleton to lift.
+        thickness - the sphere radius.
+    @returns:
+        liftProc - the lifted skeleton.
+    @example_usage:
+        s_lift = Spheres(skel, 0.25)
+    """
     def __init__(self, skel:Skeleton, thickness:float) -> None:
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         _skel = skel

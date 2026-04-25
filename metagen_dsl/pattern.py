@@ -16,6 +16,13 @@ class TilingPattern:
         pass
 
 class Identity(TilingPattern):
+    """No-op patterning procedure.
+
+    @returns:
+        pat - the patterning procedure.
+    @example_usage:
+        pat = Identity()
+    """
     def __init__(self):
         super().__init__(None, "identity")
 
@@ -23,6 +30,18 @@ class Identity(TilingPattern):
         return NoOp()
 
 class CuboidFullMirror(TilingPattern):
+    """Mirror an axis-aligned cuboid tile through R^3.
+
+    Procedure which uses only mirrors to duplicate an axis-aligned cuboid
+    tile such that it fills a unit cube — partitioning R^3. Eligible cuboid
+    CPs must be such that all dimensions are 1/(2^k) for some positive
+    integer k.
+
+    @returns:
+        pat - the patterning procedure.
+    @example_usage:
+        pat = CuboidFullMirror()
+    """
     def __init__(self):
         super().__init__(cp.CPT_Cuboid("cuboid"), "full_mirror")
 
@@ -96,6 +115,16 @@ class CuboidFullMirror(TilingPattern):
 
 
 class TriPrismFullMirror(TilingPattern):
+    """Mirror a triangular-prism tile through R^3.
+
+    Procedure which uses only mirrors to duplicate a triangular prism-based
+    tile such that it partitions R^3.
+
+    @returns:
+        pat - the patterning procedure.
+    @example_usage:
+        pat = TriPrismFullMirror()
+    """
     def __init__(self):
         prism = cp.CPT_TriangularPrism("triPrism")
         super().__init__(prism, "full_mirror")
@@ -142,6 +171,16 @@ class TriPrismFullMirror(TilingPattern):
         return CuboidFullMirror().to_unit_cube(gspecs.resultingCPCorners, opToCuboid)
 
 class TetFullMirror(TilingPattern):
+    """Mirror a tet-based tile through R^3.
+
+    Procedure which uses only mirrors to duplicate a tet-based tile such
+    that it partitions R^3.
+
+    @returns:
+        pat - the patterning procedure.
+    @example_usage:
+        pat = TetFullMirror()
+    """
     def __init__(self):
         tet = cp.CPT_Tet("tet")
         super().__init__(tet, "full_mirror")
@@ -152,6 +191,20 @@ class TetFullMirror(TilingPattern):
                         )
 
 class Custom(TilingPattern):
+    """Compose a custom patterning procedure from PatternOps.
+
+    Environment used to compose a custom patterning procedure. Currently
+    only implemented for the Cuboid CP. The patternOp argument is the
+    outermost operation in a tree of nested Mirror/Rotate180/Translate ops.
+
+    @params:
+        patternOp - outermost pattern operation in the composition.
+    @returns:
+        pat - the complete patterning procedure.
+    @example_usage:
+        pat = Custom(Rotate180([cuboid.edges.BACK_RIGHT, cuboid.edges.BACK_LEFT], True,
+                       Rotate180([cuboid.edges.TOP_RIGHT], True)))
+    """
     def __init__(self, patternOp:PatternOp):
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         pat = patternOp

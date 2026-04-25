@@ -150,6 +150,24 @@ class EdgeChain(EdgeChainLowLevel):
 
 
 class Curve(EdgeChain):
+    """Smooth path through ordered vertices.
+
+    Creates a path along the ordered input vertices. This path will be smoothed
+    at a later stage (e.g., to a Bezier curve), depending on the lifting
+    procedures that are chosen. All input vertices must be referenced to the
+    same CP (e.g., all relative to cuboid entities).
+
+    @params:
+        ordered_verts - a list of vertices, in the order you'd like them to be
+                        traversed. A closed loop may be created by repeating
+                        the zeroth element at the end of the list. No other
+                        vertex may be repeated. Only simple paths are permitted.
+    @returns:
+        curve - the new curve object.
+    @example_usage:
+        c0 = Curve([v2, v3])
+        c0 = Curve([v0, v1, v2, v3, v4, v5, v0])
+    """
     def __init__(self, ordered_verts:list[cp.ConvexPolytope.RelativeEntity]):
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         _orderedEntities = ordered_verts
@@ -162,10 +180,28 @@ class PlanarCurve(Curve):
         super().__init__(_orderedEntities, True)
 
 class Polyline(EdgeChain):
+    """Piecewise-linear path through ordered vertices.
+
+    Creates a piecewise-linear path along the ordered input vertices. All
+    vertices must be referenced to the same CP (e.g., all relative to cuboid
+    entities). The resulting path will remain a polyline in any structures
+    that include it.
+
+    @params:
+        ordered_verts - a list of vertices, in the order you'd like them to be
+                        traversed. A closed loop may be created by repeating
+                        the zeroth element at the end of the list. No other
+                        vertex may be repeated. Only simple paths are permitted.
+    @returns:
+        polyline - the new polyline object.
+    @example_usage:
+        p0 = Polyline([v2, v3])
+        p0 = Polyline([v0, v1, v2, v3, v4, v5, v0])
+    """
     def __init__(self, ordered_verts:list[cp.ConvexPolytope.RelativeEntity]):
         # assign to the original parameter names (correcting mismatched signatures in code/documentation)
         _orderedEntities = ordered_verts
-        
+
         super().__init__(_orderedEntities, False)
 
     @classmethod
@@ -573,6 +609,24 @@ class EdgeSkeleton(Skeleton):
 SkeletonInput = Union[cp.ConvexPolytope.RelativeEntity, SkeletonComponent]
 
 def skeleton(entities:list[SkeletonInput]) -> Skeleton:
+    """Combine vertices or polylines/curves into a skeleton.
+
+    Combines a set of vertices OR polylines/curves into a larger structure,
+    over which additional information can be inferred. For example, within a
+    skeleton, multiple open polylines/curves may string together to create a
+    closed loop, a branched path, or a set of disconnected components.
+
+    @params:
+        entities - a list of entities (vertices or polylines/curves) to be
+                   combined. A given skeleton must only have entities with the
+                   same dimension — that is, it must consist of all points or
+                   all polylines/curves.
+    @returns:
+        skeleton - the new skeleton object.
+    @example_usage:
+        skel = skeleton([curve0, polyline1, curve2, polyline3])
+        skel = skeleton([v0])
+    """
     # assign to the original parameter names (correcting mismatched signatures in code/documentation)
     _elements = entities
 
