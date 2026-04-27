@@ -75,12 +75,28 @@ def gpu_available() -> bool:
 # Geometry
 # ---------------------------------------------------------------------------
 
-def generate_voxels(graph_json: str, resolution: int):
-    """Call metagen_kernel.generate(graph_json, resolution). Returns GeometryResult."""
+def generate_voxels(graph_json: str, resolution: int,
+                    tpms_optimizer_mode: str = 'current'):
+    """Call metagen_kernel.generate. Returns GeometryResult.
+
+    tpms_optimizer_mode: 'current' | 'global' | 'experimental' — see
+    metagen_kernel.generate() for semantics. Older kernels that lack this
+    kwarg will fall back to their built-in default ('current').
+    """
     kernel = _get_kernel()
     if kernel is None:
         raise MetagenBackendError(f"metagen_kernel not installed.\n{_INSTALL_HINT}")
-    return kernel.generate(graph_json, resolution)
+    try:
+        return kernel.generate(graph_json, resolution,
+                               tpms_optimizer_mode=tpms_optimizer_mode)
+    except TypeError:
+        # Kernel build predates the kwarg. Fall back to current behavior.
+        if tpms_optimizer_mode != 'current':
+            import warnings
+            warnings.warn(
+                "this metagen_kernel build doesn't expose tpms_optimizer_mode; "
+                "falling back to default solver behavior")
+        return kernel.generate(graph_json, resolution)
 
 
 # ---------------------------------------------------------------------------

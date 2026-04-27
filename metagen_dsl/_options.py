@@ -17,6 +17,15 @@ _DEFAULTS = {
     'display.render_size': (400, 400),
     'display.render_views': ('top_right', 'top', 'front', 'right'),
     'cache.max_entries': 4,
+    # Selects which optimizer the kernel uses inside the conjugate-TPMS solve.
+    #   'current'      — BOBYQA local refinement only. Fast (~seconds for typical
+    #                    cases); non-deterministic for TPMS+Conjugation patterns
+    #                    on prism/cuboid bounding volumes.
+    #   'global'       — Adds a 500-eval ESCH evolution-strategy phase. Effectively
+    #                    deterministic; substantially slower (often 10× or more).
+    #   'experimental' — Reserved for ongoing stable-but-fast algorithm work.
+    #                    Currently identical to 'current'.
+    'tpms.optimizer_mode': 'current',
 }
 
 _options = dict(_DEFAULTS)
