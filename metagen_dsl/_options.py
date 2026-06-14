@@ -21,11 +21,19 @@ _DEFAULTS = {
     #   'current'      — BOBYQA local refinement only. Fast (~seconds for typical
     #                    cases); non-deterministic for TPMS+Conjugation patterns
     #                    on prism/cuboid bounding volumes.
-    #   'global'       — Adds a 500-eval ESCH evolution-strategy phase. Effectively
-    #                    deterministic; substantially slower (often 10× or more).
-    #   'experimental' — Reserved for ongoing stable-but-fast algorithm work.
-    #                    Currently identical to 'current'.
+    #                    On the prism+conjugation path it now runs a best-of-K
+    #                    multistart (see tpms.multistart_k) to tame that
+    #                    non-determinism.
+    #   'global'       — Adds a 500-eval ESCH evolution-strategy phase instead of
+    #                    multistart. Slower (often 10× or more).
+    #   'experimental' — Currently identical to 'current'; reserved for ongoing
+    #                    algorithm work.
     'tpms.optimizer_mode': 'current',
+
+    # Number of random restarts for the prism+conjugation best-of-K solve
+    # (kept the lowest-energy result). 1 = single solve (fast, basin-unstable).
+    # No effect in 'global' mode or on non-prism-conjugate surfaces.
+    'tpms.multistart_k': 4,
 }
 
 _options = dict(_DEFAULTS)
