@@ -71,29 +71,22 @@ class Structure:
     # -----------------------------------------------------------------
     # geometry / simulation
     # -----------------------------------------------------------------
-    def geometry(self, resolution: int = None, tpms_optimizer_mode: str = None,
-                 tpms_multistart_k: int = None):
-        """Generate geometry via metagen_kernel. Cached by (resolution, mode, k).
+    def geometry(self, resolution: int = None, tpms_multistart_k: int = None):
+        """Generate geometry via metagen_kernel. Cached by (resolution, k).
 
-        tpms_optimizer_mode: 'current' | 'global' | 'experimental'. See
-        metagen_kernel.generate() for semantics. When None, falls back to the
-        package-level option `tpms.optimizer_mode`.
         tpms_multistart_k: random restarts for the prism+conjugation best-of-K
         solve (1 = single solve). When None, falls back to the package-level
         option `tpms.multistart_k`.
         """
         if resolution is None:
             resolution = _options.get_option('display.resolution_direct')
-        if tpms_optimizer_mode is None:
-            tpms_optimizer_mode = _options.get_option('tpms.optimizer_mode')
         if tpms_multistart_k is None:
             tpms_multistart_k = _options.get_option('tpms.multistart_k')
-        key = ('geometry', resolution, tpms_optimizer_mode, tpms_multistart_k)
+        key = ('geometry', resolution, tpms_multistart_k)
         cached = self._cache_get(key)
         if cached is not None:
             return cached
         geo = _backend.generate_voxels(self.graph_json(), resolution,
-                                       tpms_optimizer_mode=tpms_optimizer_mode,
                                        tpms_multistart_k=tpms_multistart_k)
         self._cache_put(key, geo)
         return geo

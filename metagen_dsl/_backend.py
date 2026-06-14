@@ -76,42 +76,27 @@ def gpu_available() -> bool:
 # ---------------------------------------------------------------------------
 
 def generate_voxels(graph_json: str, resolution: int,
-                    tpms_optimizer_mode: str = 'current',
                     tpms_multistart_k: int = 4):
     """Call metagen_kernel.generate. Returns GeometryResult.
 
-    tpms_optimizer_mode: 'current' | 'global' | 'experimental' — see
-    metagen_kernel.generate() for semantics.
     tpms_multistart_k: random restarts for the prism+conjugation best-of-K
-    solve (1 = single solve). Older kernels that lack either kwarg fall back
-    to their built-in defaults.
+    solve (1 = single solve). Older kernels that lack the kwarg fall back to
+    their built-in default.
     """
     kernel = _get_kernel()
     if kernel is None:
         raise MetagenBackendError(f"metagen_kernel not installed.\n{_INSTALL_HINT}")
-    import warnings
     try:
         return kernel.generate(graph_json, resolution,
-                               tpms_optimizer_mode=tpms_optimizer_mode,
                                tpms_multistart_k=tpms_multistart_k)
     except TypeError:
-        pass
-    # Kernel build predates tpms_multistart_k. Retry with just the mode kwarg.
-    if tpms_multistart_k != 4:
-        warnings.warn(
-            "this metagen_kernel build doesn't expose tpms_multistart_k; "
-            "falling back to the kernel's default restart count")
-    try:
-        return kernel.generate(graph_json, resolution,
-                               tpms_optimizer_mode=tpms_optimizer_mode)
-    except TypeError:
-        pass
-    # Kernel build predates tpms_optimizer_mode too.
-    if tpms_optimizer_mode != 'current':
-        warnings.warn(
-            "this metagen_kernel build doesn't expose tpms_optimizer_mode; "
-            "falling back to default solver behavior")
-    return kernel.generate(graph_json, resolution)
+        # Kernel build predates tpms_multistart_k. Fall back to its default.
+        if tpms_multistart_k != 4:
+            import warnings
+            warnings.warn(
+                "this metagen_kernel build doesn't expose tpms_multistart_k; "
+                "falling back to the kernel's default restart count")
+        return kernel.generate(graph_json, resolution)
 
 
 # ---------------------------------------------------------------------------

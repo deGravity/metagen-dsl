@@ -17,22 +17,11 @@ _DEFAULTS = {
     'display.render_size': (400, 400),
     'display.render_views': ('top_right', 'top', 'front', 'right'),
     'cache.max_entries': 4,
-    # Selects which optimizer the kernel uses inside the conjugate-TPMS solve.
-    #   'current'      — BOBYQA local refinement only. Fast (~seconds for typical
-    #                    cases); non-deterministic for TPMS+Conjugation patterns
-    #                    on prism/cuboid bounding volumes.
-    #                    On the prism+conjugation path it now runs a best-of-K
-    #                    multistart (see tpms.multistart_k) to tame that
-    #                    non-determinism.
-    #   'global'       — Adds a 500-eval ESCH evolution-strategy phase instead of
-    #                    multistart. Slower (often 10× or more).
-    #   'experimental' — Currently identical to 'current'; reserved for ongoing
-    #                    algorithm work.
-    'tpms.optimizer_mode': 'current',
 
-    # Number of random restarts for the prism+conjugation best-of-K solve
-    # (kept the lowest-energy result). 1 = single solve (fast, basin-unstable).
-    # No effect in 'global' mode or on non-prism-conjugate surfaces.
+    # Number of random restarts for the conjugate-TPMS solve on the basin-
+    # unstable prism+conjugation path; the lowest-energy result is kept.
+    # 1 = single solve (fast, basin-unstable). No effect on non-prism-conjugate
+    # surfaces.
     'tpms.multistart_k': 4,
 }
 
