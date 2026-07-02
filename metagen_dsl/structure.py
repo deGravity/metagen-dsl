@@ -92,18 +92,23 @@ class Structure:
         return geo
 
     def simulate(self, resolution: int = None, backend: str = None,
-                 E: float = 1.0, nu: float = 0.45):
-        """Run homogenization. Cached by (resolution, backend, E, nu)."""
+                 E: float = 1.0, nu: float = 0.45, quality: str = None):
+        """Run homogenization. Cached by (resolution, backend, E, nu, quality).
+
+        quality: 'fast' | 'balanced' | 'accurate' — the simulator's unified GPU
+        convergence profile (None = simulator default, 'balanced'). GPU results
+        surface the consistency-gate verdict as .converged / .err_est.
+        """
         if resolution is None:
             resolution = _options.get_option('display.resolution_direct')
         if backend is None:
             backend = _options.get_option('display.backend')
-        key = ('simulate', resolution, backend, E, nu)
+        key = ('simulate', resolution, backend, E, nu, quality)
         cached = self._cache_get(key)
         if cached is not None:
             return cached
         geo = self.geometry(resolution)
-        sim = _backend.simulate(geo, backend=backend, E=E, nu=nu)
+        sim = _backend.simulate(geo, backend=backend, E=E, nu=nu, quality=quality)
         self._cache_put(key, sim)
         return sim
 
