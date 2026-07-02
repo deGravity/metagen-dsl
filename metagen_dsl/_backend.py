@@ -162,6 +162,19 @@ def _simulate_cpu(geo, E: float, nu: float) -> SimulationResult:
     import numpy as np
     import time
     sim = _get_simulator()
+    # Newer simulators expose a unified CPU entry that dispatches sparse-direct
+    # FEM vs FANS (FFT) by predicted cost — dense cells go to FANS, which is
+    # orders lighter in memory. Fall back to the raw FEM call on older builds.
+    if hasattr(sim, 'simulate_cpu'):
+        r = sim.simulate_cpu(geo.voxel_active_cells, geo.cell_resolution,
+                             E=E, nu=nu)
+        if not r['success']:
+            raise RuntimeError(f"CPU solver failed: {r['error']}")
+        C = np.array(r['C_matrix'], dtype=np.float64)
+        vf = float(r['volume_fraction'])
+        return SimulationResult(
+            C_matrix=C, volume_fraction=vf, solver_used=r['solver_used'],
+            elapsed=float(r['elapsed']), properties=_derive_properties(C, vf))
     vox = np.ascontiguousarray(geo.voxel_active_cells, dtype=np.int8)
     t0 = time.perf_counter()
     r = sim.simulate_voxels(vox, geo.cell_resolution, E=E, nu=nu)
