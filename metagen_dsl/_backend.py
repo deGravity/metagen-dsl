@@ -121,6 +121,8 @@ class SimulationResult:
     elapsed: float = 0.0
     properties: dict = field(default_factory=dict)
     gpu_shift: Optional[tuple] = None
+    converged: Optional[bool] = None   # GPU consistency-gate verdict (None = ungated)
+    err_est: Optional[float] = None    # gate's extrapolated remaining rel. error
 
 
 def _derive_properties(C, volume_fraction):
@@ -171,21 +173,28 @@ def _simulate_cpu(geo, E: float, nu: float) -> SimulationResult:
         elapsed=elapsed, properties=_derive_properties(C, vf))
 
 
-def _simulate_gpu(geo, E: float, nu: float, relthres: float) -> SimulationResult:
+def _simulate_gpu(geo, E: float, nu: float, quality: str = None,
+                  relthres: float = None) -> SimulationResult:
     import numpy as np
     sim = _get_simulator()
     if not hasattr(sim, 'simulate_gpu'):
         raise MetagenBackendError("metagen_simulator lacks simulate_gpu")
     vox = np.asarray(geo.voxel_active_cells, dtype=np.float32)
-    r = sim.simulate_gpu(vox, cell_dim=geo.cell_resolution,
-                         E=E, nu=nu, relthres=relthres)
+    kwargs = {}
+    if quality is not None:
+        kwargs['quality'] = quality
+    if relthres is not None:
+        kwargs['relthres'] = relthres
+    r = sim.simulate_gpu(vox, cell_dim=geo.cell_resolution, E=E, nu=nu, **kwargs)
     if not r['success']:
         raise RuntimeError(f"GPU solver failed: {r['error']}")
     C = np.array(r['C_matrix'], dtype=np.float64)
     vf = float(r['volume_fraction'])
     return SimulationResult(
-        C_matrix=C, volume_fraction=vf, solver_used='gpu',
+        C_matrix=C, volume_fraction=vf,
+        solver_used=r.get('backend', 'gpu'),
         elapsed=float(r['elapsed']), gpu_shift=r.get('shift'),
+        converged=r.get('converged'), err_est=r.get('err_est'),
         properties=_derive_properties(C, vf))
 
 
@@ -207,12 +216,17 @@ def _simulate_metal(geo, E: float, nu: float) -> SimulationResult:
 
 
 def simulate(geo, backend: str = 'auto', E: float = 1.0, nu: float = 0.45,
-             relthres: float = 5e-3) -> SimulationResult:
+             quality: str = None, relthres: float = None) -> SimulationResult:
     """Dispatch simulation to a GPU (CUDA or Metal) or CPU.
 
-    backend='auto' tries CUDA GPU, then Metal GPU, then falls back to CPU on any
-    failure. backend='gpu'/'metal' raise if that backend is unavailable or fails.
+    backend='auto' tries the GPU (metagen_simulator.simulate_gpu dispatches
+    CUDA -> Metal internally), then falls back to CPU on any failure.
+    backend='gpu'/'metal' raise if that backend is unavailable or fails.
     backend='cpu' always uses CPU.
+
+    quality: 'fast' | 'balanced' | 'accurate' -- the simulator's unified
+    convergence profile (None = simulator default, 'balanced'). relthres is a
+    raw expert override passed through to the CUDA backend; leave None.
     """
     if _get_simulator() is None:
         raise MetagenBackendError(f"metagen_simulator not installed.\n{_INSTALL_HINT}")
@@ -223,7 +237,7 @@ def simulate(geo, backend: str = 'auto', E: float = 1.0, nu: float = 0.45,
     if backend == 'gpu':
         if not gpu_available():
             raise MetagenBackendError("GPU backend requested but not available.")
-        return _simulate_gpu(geo, E, nu, relthres)
+        return _simulate_gpu(geo, E, nu, quality, relthres)
 
     if backend == 'metal':
         if not metal_available():
@@ -232,20 +246,15 @@ def simulate(geo, backend: str = 'auto', E: float = 1.0, nu: float = 0.45,
 
     if backend == 'auto':
         sim = _get_simulator()
-        if gpu_available():
+        # simulate_gpu dispatches CUDA -> Metal internally, so one call covers
+        # both GPU backends; CPU is the final fallback.
+        if gpu_available() or metal_available():
             if hasattr(sim, 'is_valid_multigrid_dim') and \
                sim.is_valid_multigrid_dim(geo.cell_resolution):
                 try:
-                    return _simulate_gpu(geo, E, nu, relthres)
+                    return _simulate_gpu(geo, E, nu, quality, relthres)
                 except Exception as e:
-                    warnings.warn(f"GPU solver failed ({e}); falling back.")
-        if metal_available():
-            if hasattr(sim, 'is_valid_metal_dim') and \
-               sim.is_valid_metal_dim(geo.cell_resolution):
-                try:
-                    return _simulate_metal(geo, E, nu)
-                except Exception as e:
-                    warnings.warn(f"Metal solver failed ({e}); falling back to CPU.")
+                    warnings.warn(f"GPU solver failed ({e}); falling back to CPU.")
         return _simulate_cpu(geo, E, nu)
 
     raise ValueError(f"backend must be 'auto'|'gpu'|'cpu', got {backend!r}")
