@@ -91,3 +91,35 @@ def test_dsl_pipeline_caches_results(case, resolution):
     a = s.simulate(resolution=resolution, backend='cpu')
     b = s.simulate(resolution=resolution, backend='cpu')
     assert a is b
+
+
+def test_sim_only_path_matches_full_path(case='beam_bcc', resolution=33):
+    """simulate() through the minimal-realization (voxels-only) kernel path
+    must produce the same voxels — and hence the same C matrix — as
+    simulating a fully-realized geometry."""
+    # Full path: force full geometry first, then simulate (reuses it).
+    s_full = _make_structure(case)
+    geo_full = s_full.geometry(resolution=resolution)
+    sim_full = s_full.simulate(resolution=resolution, backend='cpu')
+
+    # Minimal path: fresh Structure, simulate() with cold cache goes
+    # through geometry(realize='sim') -> kernel outputs='voxels'.
+    s_min = _make_structure(case)
+    sim_min = s_min.simulate(resolution=resolution, backend='cpu')
+    geo_min = s_min._cache_get(('geometry_sim', resolution, 4))
+
+    assert geo_min is not None, 'simulate() did not use the sim-only path'
+    assert geo_min.thickened_vertices.shape[0] == 0  # really voxels-only
+    assert np.array_equal(np.asarray(geo_min.voxel_active_cells),
+                          np.asarray(geo_full.voxel_active_cells))
+    # Identical voxels feed the same solver, so C matches to solver noise:
+    # non-zero entries agree to rtol=1e-9; the atol floor only covers the
+    # ~1e-18 numerical-zero entries, whose sign/magnitude wobbles between
+    # any two CPU solves (parallel reduction order), including two
+    # full-path runs.
+    assert np.allclose(np.asarray(sim_min.C_matrix),
+                       np.asarray(sim_full.C_matrix), rtol=1e-9, atol=1e-12)
+
+    # A later render/interactive-style request still realizes full meshes.
+    geo_render = s_min.geometry(resolution=resolution)
+    assert geo_render.thickened_vertices.shape[0] > 0
