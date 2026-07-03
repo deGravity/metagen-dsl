@@ -2,6 +2,7 @@ from .tile import *
 from .pattern import *
 from .lifting import *
 from .structure import *
+from .voxel_volume import VoxelVolume
 from . import skeleton as sk
 from . import convex_polytope as cp
 from pathlib import Path
@@ -47,9 +48,29 @@ class ProcMetaTranslator:
                     bvType = pmn.ProcMetaBVTypes.CUSTOM
             assert bvType != None 
 
-            # look at every lifted skeleton 
+            # look at every lifted skeleton
             liftedSkelPMNs = []
             for liftedSkel in structure.tile.liftedSkeletons:
+                # Imported voxel volumes serialize directly to a Volume-level
+                # source node; there is no skeleton to lift. The voxel box
+                # spans the AABB of the embedded cuboid (axis-aligned fit
+                # policy — see docs in voxel_volume.py).
+                if isinstance(liftedSkel, VoxelVolume):
+                    corners = structure.tile.bv_corner_positions
+                    bbmin = corners.min(axis=0)
+                    bbmax = corners.max(axis=0)
+                    # every embedded corner must sit on a corner of the AABB,
+                    # i.e. the embedding must be an axis-aligned cuboid
+                    onAABB = np.isclose(corners, bbmin[None, :]) | np.isclose(corners, bbmax[None, :])
+                    assert onAABB.all(), \
+                        "VoxelVolume tiles require an axis-aligned cuboid embedding"
+                    volNode = self.sr.add_voxel_volume(liftedSkel.voxels, bbmin, bbmax)
+                    liftedSkelPMNs.append(volNode)
+                    # extMethod feeds the Object node below; voxel volumes
+                    # don't extrude, SPHERICAL (0) is the no-op default.
+                    extMethod = pmn.ProcMetaExtrusionMethods.SPHERICAL
+                    continue
+
                 # loop over the vertices and edge chains
                 CPRefdPt2ProcMetaVert:dict[cp.PointReferencedToCP, pmn.OpNode_Vertex] = {}
                 SkelEC2ProcMetaEC:dict[sk.EdgeChain, pmn.OpNode_EdgeChain] = {}

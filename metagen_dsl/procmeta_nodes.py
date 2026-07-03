@@ -1,3 +1,5 @@
+import base64
+import zlib
 from enum import Enum
 import numpy as np
 from typing import Self
@@ -219,13 +221,69 @@ class OpNode_AssociateFamily(ProcMetaOpNode):
         info["angle"] = self.angle
         return info
 
+VOXEL_VOLUME_ENCODING = "b64.zlib.bitpack"
+
+
+def encode_voxel_data(voxels: np.ndarray) -> str:
+    '''Encode a 3D bool occupancy array (indexed [z, y, x]) into the
+    inline graph.json payload: MSB-first packed bits of the C-order
+    flattened array (flat index = (z*ny + y)*nx + x, x fastest),
+    zlib-deflated, base64-encoded.'''
+    flat = np.ascontiguousarray(voxels.astype(bool)).ravel(order='C')
+    packed = np.packbits(flat, bitorder='big')
+    return base64.b64encode(zlib.compress(packed.tobytes(), 9)).decode('ascii')
+
+
+def decode_voxel_data(data: str, dims: list[int]) -> np.ndarray:
+    '''Inverse of encode_voxel_data. dims is [nx, ny, nz]; returns a
+    bool array of shape (nz, ny, nx) (indexed [z, y, x]).'''
+    nx, ny, nz = dims
+    n = nx * ny * nz
+    packed = np.frombuffer(zlib.decompress(base64.b64decode(data)), dtype=np.uint8)
+    flat = np.unpackbits(packed, count=n, bitorder='big').astype(bool)
+    return flat.reshape((nz, ny, nx))
+
+
+class OpNode_VoxelVolume(ProcMetaOpNode):
+    '''
+    Imported external voxel geometry as a first-class Volume-level
+    (SKELETON-class) primitive. Accepts no graph inputs; serves as valid
+    input to Mirror / Transform / Group / Object nodes, so all
+    patterning and boolean operations compose on top of it.
+
+    The voxel array is indexed [z, y, x] (the project-wide layout used
+    by GeometryResult.voxel_active_cells and the test fixtures) and
+    spans the axis-aligned box `bbox` in the node's frame (default: the
+    unit cube).
+    '''
+    def __init__(self, _id:int, _voxels:np.ndarray, _bboxMin:np.array=None, _bboxMax:np.array=None) -> None:
+        super().__init__("volume"+str(_id),
+                         ProcMetaOpClasses.SKELETON,
+                         [],
+                         [])
+        assert _voxels.ndim == 3, "VoxelVolume voxel array must be 3D (indexed [z, y, x])"
+        self.voxels = np.ascontiguousarray(_voxels.astype(bool))
+        self.bboxMin = np.zeros(3) if _bboxMin is None else np.asarray(_bboxMin, dtype=float)
+        self.bboxMax = np.ones(3) if _bboxMax is None else np.asarray(_bboxMax, dtype=float)
+        assert np.all(self.bboxMax > self.bboxMin), "VoxelVolume bbox must be non-degenerate"
+
+    def get_proc_meta_description(self) -> dict:
+        info = super().get_proc_meta_description()
+        nz, ny, nx = self.voxels.shape
+        info["dims"] = [nx, ny, nz]
+        info["encoding"] = VOXEL_VOLUME_ENCODING
+        info["data"] = encode_voxel_data(self.voxels)
+        info["bbox"] = [self.bboxMin.tolist(), self.bboxMax.tolist()]
+        return info
+
+
 class OpNode_Mirror(ProcMetaOpNode):
     '''
     '''
     def __init__(self, _id:int, _skelIn:ProcMetaOpNode, _mirrorPlaneOrigin:np.array, _mirrorPlaneNormal:np.array, _doCopy:bool) -> None:
-        super().__init__("mirror"+str(_id), 
+        super().__init__("mirror"+str(_id),
                          ProcMetaOpClasses.SKELETON,
-                         [OpNode_Line, OpNode_Surface, OpNode_DualSurface, OpNode_AssociateFamily, OpNode_Mirror, OpNode_Transform, OpNode_Group],
+                         [OpNode_Line, OpNode_Surface, OpNode_DualSurface, OpNode_AssociateFamily, OpNode_Mirror, OpNode_Transform, OpNode_Group, OpNode_VoxelVolume],
                          [ProcMetaOpClasses.SKELETON])
         self.skel_in = _skelIn
         self.planeO = _mirrorPlaneOrigin
@@ -248,7 +306,7 @@ class OpNode_Transform(ProcMetaOpNode):
                  _doCopy:bool) -> None:
         super().__init__("t"+str(_id), 
                          ProcMetaOpClasses.SKELETON,
-                         [OpNode_Line, OpNode_Surface, OpNode_DualSurface, OpNode_AssociateFamily, OpNode_Mirror, OpNode_Transform, OpNode_Group],
+                         [OpNode_Line, OpNode_Surface, OpNode_DualSurface, OpNode_AssociateFamily, OpNode_Mirror, OpNode_Transform, OpNode_Group, OpNode_VoxelVolume],
                          [ProcMetaOpClasses.SKELETON])
         self.skel_in = _skelIn.name
         self.origin = _origin
@@ -275,7 +333,7 @@ class OpNode_Group(ProcMetaOpNode):
     def __init__(self, _id:int, _skelsIn:list[ProcMetaOpNode]) -> None:
         super().__init__("g"+str(_id),
                        ProcMetaOpClasses.SKELETON,
-                       [OpNode_Line, OpNode_Surface, OpNode_DualSurface, OpNode_AssociateFamily, OpNode_Mirror, OpNode_Transform, OpNode_Group],
+                       [OpNode_Line, OpNode_Surface, OpNode_DualSurface, OpNode_AssociateFamily, OpNode_Mirror, OpNode_Transform, OpNode_Group, OpNode_VoxelVolume],
                        [ProcMetaOpClasses.SKELETON])
         self.skels_in = _skelsIn
         
@@ -293,7 +351,7 @@ class OpNode_Object(ProcMetaOpNode):
     def __init__(self, _id:int, _skelIn:ProcMetaOpNode, _sdfResolution:int, _extrusionMethod:ProcMetaExtrusionMethods=ProcMetaExtrusionMethods.SPHERICAL) -> None:
         super().__init__("object"+str(_id), 
                          ProcMetaOpClasses.SOLID,
-                         [OpNode_Line, OpNode_Surface, OpNode_DualSurface, OpNode_AssociateFamily, OpNode_Mirror, OpNode_Transform, OpNode_Group],
+                         [OpNode_Line, OpNode_Surface, OpNode_DualSurface, OpNode_AssociateFamily, OpNode_Mirror, OpNode_Transform, OpNode_Group, OpNode_VoxelVolume],
                          [ProcMetaOpClasses.SKELETON])
         self.skel_in = _skelIn
         self.res = _sdfResolution
