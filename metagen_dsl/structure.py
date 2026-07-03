@@ -71,24 +71,50 @@ class Structure:
     # -----------------------------------------------------------------
     # geometry / simulation
     # -----------------------------------------------------------------
-    def geometry(self, resolution: int = None, tpms_multistart_k: int = None):
+    def geometry(self, resolution: int = None, tpms_multistart_k: int = None,
+                 realize: str = 'full'):
         """Generate geometry via metagen_kernel. Cached by (resolution, k).
 
         tpms_multistart_k: random restarts for the prism+conjugation best-of-K
         solve (1 = single solve). When None, falls back to the package-level
         option `tpms.multistart_k`.
+
+        realize: 'full' (default) realizes every GeometryResult field.
+        'sim' is the simulation-only fast path: the kernel skips marching
+        cubes and mesh assembly, so the result has identical
+        voxel_active_cells / cell_resolution / volume_fraction but empty
+        mesh fields. Full and sim-only results are cached under separate
+        keys: a sim-only result never satisfies a later realize='full'
+        request (render()/interactive() always get real meshes), while a
+        cached full result — a strict superset — satisfies realize='sim'
+        without extra kernel work.
         """
+        if realize not in ('full', 'sim'):
+            raise ValueError(f"realize must be 'full' or 'sim', got {realize!r}")
         if resolution is None:
             resolution = _options.get_option('display.resolution_direct')
         if tpms_multistart_k is None:
             tpms_multistart_k = _options.get_option('tpms.multistart_k')
-        key = ('geometry', resolution, tpms_multistart_k)
-        cached = self._cache_get(key)
+
+        full_key = ('geometry', resolution, tpms_multistart_k)
+        cached = self._cache_get(full_key)
         if cached is not None:
             return cached
+
+        if realize == 'sim':
+            sim_key = ('geometry_sim', resolution, tpms_multistart_k)
+            cached = self._cache_get(sim_key)
+            if cached is not None:
+                return cached
+            geo = _backend.generate_voxels(self.graph_json(), resolution,
+                                           tpms_multistart_k=tpms_multistart_k,
+                                           outputs='voxels')
+            self._cache_put(sim_key, geo)
+            return geo
+
         geo = _backend.generate_voxels(self.graph_json(), resolution,
                                        tpms_multistart_k=tpms_multistart_k)
-        self._cache_put(key, geo)
+        self._cache_put(full_key, geo)
         return geo
 
     def simulate(self, resolution: int = None, backend: str = None,
@@ -107,7 +133,11 @@ class Structure:
         cached = self._cache_get(key)
         if cached is not None:
             return cached
-        geo = self.geometry(resolution)
+        # Simulation consumes only voxel_active_cells, so use the minimal
+        # realization path. geometry(realize='sim') reuses a cached full
+        # geometry when one exists; otherwise it asks the kernel for
+        # voxels-only (identical voxels, no marching cubes / mesh assembly).
+        geo = self.geometry(resolution, realize='sim')
         sim = _backend.simulate(geo, backend=backend, E=E, nu=nu, quality=quality)
         self._cache_put(key, sim)
         return sim

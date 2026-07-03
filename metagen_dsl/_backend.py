@@ -86,21 +86,41 @@ def metal_available() -> bool:
 # ---------------------------------------------------------------------------
 
 def generate_voxels(graph_json: str, resolution: int,
-                    tpms_multistart_k: int = 4):
+                    tpms_multistart_k: int = 4, outputs: str = 'all'):
     """Call metagen_kernel.generate. Returns GeometryResult.
 
     tpms_multistart_k: random restarts for the prism+conjugation best-of-K
     solve (1 = single solve). Older kernels that lack the kwarg fall back to
     their built-in default.
+
+    outputs: 'all' (default) realizes every GeometryResult field.
+    'voxels' is the sim-only fast path: voxel_active_cells /
+    cell_resolution / volume_fraction are identical to 'all' mode, but
+    marching cubes and mesh assembly are skipped and all mesh fields come
+    back empty. Older kernels that lack the kwarg silently fall back to
+    full realization (correct, just slower).
     """
     kernel = _get_kernel()
     if kernel is None:
         raise MetagenBackendError(f"metagen_kernel not installed.\n{_INSTALL_HINT}")
     try:
+        if outputs == 'all':
+            # Don't pass outputs= so kernels predating it keep working.
+            return kernel.generate(graph_json, resolution,
+                                   tpms_multistart_k=tpms_multistart_k)
         return kernel.generate(graph_json, resolution,
-                               tpms_multistart_k=tpms_multistart_k)
+                               tpms_multistart_k=tpms_multistart_k,
+                               outputs=outputs)
     except TypeError:
-        # Kernel build predates tpms_multistart_k. Fall back to its default.
+        # Kernel build predates tpms_multistart_k and/or outputs. Retry with
+        # progressively fewer kwargs; results stay correct (voxels-only just
+        # degrades to full realization).
+        if outputs != 'all':
+            try:
+                return kernel.generate(graph_json, resolution,
+                                       tpms_multistart_k=tpms_multistart_k)
+            except TypeError:
+                pass
         if tpms_multistart_k != 4:
             import warnings
             warnings.warn(
