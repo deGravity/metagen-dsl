@@ -8,6 +8,7 @@ from .procmeta_translator import *
 from .tile import *
 from .pattern import *
 from .lifting import *
+from .voxel_volume import VoxelVolume
 from .skeleton import *
 from .structure import *
 from .convex_polytope import *

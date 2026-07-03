@@ -69,6 +69,15 @@ class ProcMetaGraph:
             self.sr.add_edge(ec, s)
         return s
 
+    def add_voxel_volume(self, voxels:np.ndarray, bboxMin:np.array=None, bboxMax:np.array=None) -> pmn.OpNode_VoxelVolume:
+        '''Add an imported voxel-occupancy grid as a Volume-level
+        (SKELETON-class) source node. `voxels` is a 3D bool array
+        indexed [z, y, x]; it spans the axis-aligned box
+        [bboxMin, bboxMax] (default: the unit cube).'''
+        v = pmn.OpNode_VoxelVolume(self.__generateIDForNewNode(pmn.OpNode_VoxelVolume), voxels, bboxMin, bboxMax)
+        self.sr.add_node(v)
+        return v
+
     def add_mirror(self, inputSkel:pmn.ProcMetaOpNode, planeO:np.array, planeN:np.array, doCopy:bool) -> pmn.OpNode_Mirror:
         m = pmn.OpNode_Mirror(self.__generateIDForNewNode(pmn.OpNode_Mirror), inputSkel, planeO, planeN, doCopy)
         self.sr.add_node(m)
